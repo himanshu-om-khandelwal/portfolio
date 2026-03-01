@@ -1,0 +1,10 @@
+[project]
+name = "portfolio"
+version = "0.1.0"
+description = "For those who wants to know about Himanshu"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "langchain>=1.2.10",
+    "streamlit>=1.54.0",
+]
