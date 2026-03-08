@@ -6,5 +6,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "langchain>=1.2.10",
+    "langchain-community>=0.4.1",
+    "langchain-huggingface>=1.2.1",
+    "langchain-pinecone>=0.2.13",
+    "pinecone-client>=6.0.0",
     "streamlit>=1.54.0",
 ]
