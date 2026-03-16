@@ -6,8 +6,10 @@ from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 
-from langchain_text_splitters  import MarkdownTextSplitter
-from langchain_huggingface import HuggingFaceEndpointEmbeddings, HuggingFaceEndpoint, ChatHuggingFace
+from langchain_text_splitters  import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
+
+from langchain_anthropic import ChatAnthropic
 
 from pinecone import Pinecone, ServerlessSpec
 from langchain_pinecone import PineconeVectorStore
@@ -29,12 +31,35 @@ def load_docs():
     return docs
 
 def split_docs(docs):
-    splitter = MarkdownTextSplitter(
-        chunk_size = 500,
-        chunk_overlap = 50
-    )
+    # 1. Headers identify karein jinpe split karna hai
+    headers_to_split_on = [
+        ("#", "Header 1"),
+        ("##", "Header 2"),
+        ("###", "Header 3"),
+    ]
     
-    return splitter.split_documents(docs)
+    header_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
+    
+    final_chunks = []
+    
+    for doc in docs:
+        # Header ke basis par split karein
+        header_splits = header_splitter.split_text(doc.page_content)
+        
+        # Agar koi section bohot bada hai, toh usse further chota karein
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=800, # Size thoda badha diya taaki context rahe
+            chunk_overlap=100
+        )
+        
+        splits = text_splitter.split_documents(header_splits)
+        
+        # Purana metadata (like filename) preserve karein
+        for split in splits:
+            split.metadata.update(doc.metadata)
+            final_chunks.append(split)
+            
+    return final_chunks
 
 @st.cache_resource
 def build_vector_store():
@@ -49,8 +74,8 @@ def build_vector_store():
     pc = Pinecone(api_key = st.secrets['PINECONE_API_KEY'])
     index_name = 'himanshu-portfolio'
     
+    # 1. Check/Create Index
     existing_indexes = [index.name for index in pc.list_indexes()]
-
     if index_name not in existing_indexes:
         pc.create_index(
             name = index_name,
@@ -61,10 +86,15 @@ def build_vector_store():
                 region = 'us-east-1'
             )
         )
+        while not pc.describe_index(index_name).status['ready']:
+            time.sleep(1)
+
+    # 2. CLEAR THE INDEX (Crucial for testing)
+    # This prevents old data from blocking your new details
+    index = pc.Index(index_name)
+    index.delete(delete_all=True) 
     
-    while not pc.describe_index(index_name).status['ready']:
-        time.sleep(1)
-        
+    # 3. Upload fresh data
     vector_store = PineconeVectorStore.from_documents(
         documents = chunks,
         embedding = embeddings,
@@ -75,19 +105,17 @@ def build_vector_store():
     return vector_store
 
 def build_rag_chain(_vector_store):
-    llm_endpoint = HuggingFaceEndpoint(
-        repo_id = 'meta-llama/Llama-3.1-8B-Instruct',
-        task = 'conversational',
-        huggingfacehub_api_token = st.secrets['HUGGINGFACE_API_KEY'],
-        max_new_tokens = 512,
-        temperature = 0.5
+    model = ChatAnthropic(
+        api_key=st.secrets['ANTHROPIC_API_KEY'],
+        model="claude-haiku-4-5-20251001",
+        max_tokens=512,
+        temperature=0.5
     )
-    
-    model = ChatHuggingFace(llm=llm_endpoint)
+
     
     retriever = _vector_store.as_retriever(
         search_type = 'similarity',
-        search_kwargs = {'k': 3}
+        search_kwargs = {'k': 10}
     )
     
     system_prompt = """You are a helpful assistant representing Himanshu Khandelwal's portfolio.
@@ -113,7 +141,7 @@ Retrieved Context:
 
 def main():
     st.title("🤖 Ask me anything about Himanshu")
-    st.caption("Powered by RAG · Mistral 7B · Pinecone · HuggingFace")
+    st.caption("Powered by RAG · Anthropic · Pinecone · HuggingFace")
     
     with st.spinner('🔧 Setting up knowledge base...'):
         vector_store = build_vector_store()
@@ -144,7 +172,7 @@ def main():
                 })
                 response = result['answer']
                 st.markdown(response)
-        
+            
         st.session_state.messages.append({'role': 'assistant', 'content': response})
 
 if __name__ == "__main__":
