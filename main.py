@@ -190,38 +190,36 @@ def main():
                 st.markdown(response)
         
         # DEBUGGING: Show retrieved context and exact prompt sent to LLM
-        '''
-        with st.expander("🔍 Debug: What the AI retrieved"):
-            if "context" in result:
-                docs_with_scores = vector_store.similarity_search_with_score(prompt, k=10)
-                for doc, score in docs_with_scores:
-                    st.write(f"✅ **Similarity Score:** {round(score, 4)}")
-                    st.write(f"**Source:** {doc.metadata.get('source', 'Unknown')}")
-                    st.write(doc.page_content)
-                    st.divider()
-            else:
-                st.write("No context was retrieved for this query.")
+#         with st.expander("🔍 Debug: What the AI retrieved"):
+#             if "context" in result:
+#                 docs_with_scores = vector_store.similarity_search_with_score(prompt, k=10)
+#                 for doc, score in docs_with_scores:
+#                     st.write(f"✅ **Similarity Score:** {round(score, 4)}")
+#                     st.write(f"**Source:** {doc.metadata.get('source', 'Unknown')}")
+#                     st.write(doc.page_content)
+#                     st.divider()
+#             else:
+#                 st.write("No context was retrieved for this query.")
 
-        with st.expander("📋 Debug: Exact Prompt Sent to LLM"):
-            retrieved_docs = retriever.invoke(prompt)
-            context_text = "\n\n---\n\n".join([doc.page_content for doc in retrieved_docs])
+#         with st.expander("📋 Debug: Exact Prompt Sent to LLM"):
+#             retrieved_docs = retriever.invoke(prompt)
+#             context_text = "\n\n---\n\n".join([doc.page_content for doc in retrieved_docs])
             
-            chat_history_text = ""
-            for msg in chat_history:
-                if isinstance(msg, HumanMessage):
-                    chat_history_text += f"Human: {msg.content}\n"
-                elif isinstance(msg, AIMessage):
-                    chat_history_text += f"AI: {msg.content}\n"
+#             chat_history_text = ""
+#             for msg in chat_history:
+#                 if isinstance(msg, HumanMessage):
+#                     chat_history_text += f"Human: {msg.content}\n"
+#                 elif isinstance(msg, AIMessage):
+#                     chat_history_text += f"AI: {msg.content}\n"
             
-            full_prompt = f"""{system_prompt_text.replace('{context}', context_text)}
+#             full_prompt = f"""{system_prompt_text.replace('{context}', context_text)}
         
-CHAT HISTORY:
-{chat_history_text if chat_history_text else "(none)"}
+# CHAT HISTORY:
+# {chat_history_text if chat_history_text else "(none)"}
 
-HUMAN: {prompt}"""
+# HUMAN: {prompt}"""
     
-            st.text_area("Prompt", value=full_prompt, height=400)
-        '''
+#             st.text_area("Prompt", value=full_prompt, height=400)
 
         st.session_state.messages.append({'role': 'assistant', 'content': response})
 
