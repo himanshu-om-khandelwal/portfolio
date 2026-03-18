@@ -94,12 +94,11 @@ def build_vector_store():
     if stats.get('total_vector_count', 0) > 0:
         try:
             index.delete(delete_all=True)
-            st.write("🧹 Purged old vector data...")
+            print("🧹 Purged old vector data...")
         except Exception as e:
-            # If it still fails with a 'Namespace not found' error, we ignore it
-            pass 
+            print(f"Error occurred while purging vector data: {e}")
     else:
-        st.write("✨ Index is already fresh and empty.")
+        print("✨ Index is already fresh and empty.")
     
     # 3. Upload fresh data
     vector_store = PineconeVectorStore.from_documents(
