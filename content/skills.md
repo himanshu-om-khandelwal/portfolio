@@ -1,31 +1,24 @@
-# 🛠️ Skills
+# Skills
 
-## 🧪 Testing & Automation Tools
-Cypress · Playwright · Selenium · TestNG · Cucumber
+## Testing and Automation Tools
 
-## 💻 Programming Languages
+- **Frameworks:** Cypress, Playwright, Selenium, TestNG, Cucumber
 
-### ⭐ Primary
-Python · SQL
+## Programming Languages
 
-### 🔹 Secondary
-JavaScript · Java 
+- **Primary Languages:** Python, SQL
+- **Secondary Languages:** JavaScript, Java
 
-## ⚙️ DevOps & Infrastructure
+## DevOps and Infrastructure
 
-### 🗂️ Version Control
-GitHub · GitLab
+- **Version Control:** GitHub, GitLab
+- **Containerization:** Docker
 
-### 🐳 Containerization
-Docker
+## Testing Methodologies
 
-## 🔬 Testing Methodologies
+- **Manual Testing:** Exploratory Testing, Smoke Testing, Sanity Testing, UAT, Black Box Testing, Ad-hoc Testing, Mobile Testing (Android and iOS)
+- **Automation Testing:** Regression Testing, API Testing, UI Testing, End-to-End Testing
 
-### 🖐️ Manual Testing
-Exploratory Testing · Smoke Testing · Sanity Testing · UAT · Black Box Testing · Ad-hoc Testing · Mobile Testing (Android & iOS)
+## Collaboration and Design Tools
 
-### 🤖 Automation Testing
-Regression Testing · API Testing · UI Testing · E2E Testing 
-
-## 🛠️ Collaboration & Design Tools
-JIRA · Asana · Notion · Figma
+- **Tools:** JIRA, Asana, Notion, Figma

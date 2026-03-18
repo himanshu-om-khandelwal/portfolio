@@ -17,6 +17,8 @@ from langchain_pinecone import PineconeVectorStore
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langchain_classic.chains import create_retrieval_chain
 
+from datetime import datetime
+
 def load_docs():
     content_dir = Path('content')
     docs = []
@@ -31,31 +33,26 @@ def load_docs():
     return docs
 
 def split_docs(docs):
-    # 1. Headers identify karein jinpe split karna hai
+    # 1. Define the headers to split on
     headers_to_split_on = [
-        ("#", "Header 1"),
-        ("##", "Header 2"),
-        ("###", "Header 3"),
+        ("#", "H1"),
+        ("##", "H2")
     ]
     
-    header_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
+    header_splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on = headers_to_split_on,
+        strip_headers = False # Keep the # in the text so the LLM sees the structure
+    )
     
     final_chunks = []
     
     for doc in docs:
-        # Header ke basis par split karein
+        # Split purely by the markdown headers
         header_splits = header_splitter.split_text(doc.page_content)
         
-        # Agar koi section bohot bada hai, toh usse further chota karein
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=800, # Size thoda badha diya taaki context rahe
-            chunk_overlap=100
-        )
-        
-        splits = text_splitter.split_documents(header_splits)
-        
-        # Purana metadata (like filename) preserve karein
-        for split in splits:
+        # We skip the RecursiveCharacterTextSplitter entirely
+        for split in header_splits:
+            # Preserve original metadata (filename/source)
             split.metadata.update(doc.metadata)
             final_chunks.append(split)
             
@@ -68,7 +65,7 @@ def build_vector_store():
     
     embeddings = HuggingFaceEndpointEmbeddings(
         huggingfacehub_api_token = st.secrets['HUGGINGFACE_API_KEY'],
-        model = 'sentence-transformers/all-MiniLM-L6-v2'
+        model = 'sentence-transformers/all-mpnet-base-v2'
     )
     
     pc = Pinecone(api_key = st.secrets['PINECONE_API_KEY'])
@@ -79,7 +76,7 @@ def build_vector_store():
     if index_name not in existing_indexes:
         pc.create_index(
             name = index_name,
-            dimension = 384,
+            dimension = 768,
             metric = 'cosine',
             spec = ServerlessSpec(
                 cloud = 'aws',
@@ -88,11 +85,21 @@ def build_vector_store():
         )
         while not pc.describe_index(index_name).status['ready']:
             time.sleep(1)
-
-    # 2. CLEAR THE INDEX (Crucial for testing)
-    # This prevents old data from blocking your new details
     index = pc.Index(index_name)
-    index.delete(delete_all=True) 
+
+    # Check if the index has any vectors before trying to delete
+    stats = index.describe_index_stats()
+    
+    # Logic: Only delete if there is data to delete
+    if stats.get('total_vector_count', 0) > 0:
+        try:
+            index.delete(delete_all=True)
+            st.write("🧹 Purged old vector data...")
+        except Exception as e:
+            # If it still fails with a 'Namespace not found' error, we ignore it
+            pass 
+    else:
+        st.write("✨ Index is already fresh and empty.")
     
     # 3. Upload fresh data
     vector_store = PineconeVectorStore.from_documents(
@@ -112,19 +119,27 @@ def build_rag_chain(_vector_store):
         temperature=0.5
     )
 
-    
+    # calculate current date and time
+    now = datetime.now().strftime('%B %d, %Y %I:%M %p')
+
     retriever = _vector_store.as_retriever(
-        search_type = 'similarity',
-        search_kwargs = {'k': 10}
+        search_type = 'mmr',          # Maximum Marginal Relevance
+        search_kwargs = {
+            'k': 10,
+            'fetch_k': 20,
+            'lambda_mult': 0.7
+        }
     )
     
-    system_prompt = """You are a helpful assistant representing Himanshu Khandelwal's portfolio.
+    system_prompt = f"""You are a helpful assistant representing Himanshu Khandelwal's portfolio.
 Answer questions about Himanshu based ONLY on the retrieved context below.
 Be concise, friendly, and professional.
 If the answer is not in the context, say "I don't have that information about Himanshu."
 
+Current date and time is {now}. Use this to calculate age, total experience, or any time-based questions.
+
 Retrieved Context:
-{context}
+{{context}}
 """
 
     prompt = ChatPromptTemplate.from_messages([
@@ -136,16 +151,16 @@ Retrieved Context:
     question_answer_chain = create_stuff_documents_chain(model, prompt)
     rag_chain = create_retrieval_chain(retriever, question_answer_chain)
     
-    return rag_chain
+    return rag_chain, retriever, system_prompt
     
-
 def main():
-    st.title("🤖 Ask me anything about Himanshu")
+    st.title("🤖 Himanshu's Bot ")
     st.caption("Powered by RAG · Anthropic · Pinecone · HuggingFace")
     
     with st.spinner('🔧 Setting up knowledge base...'):
         vector_store = build_vector_store()
-        rag_chain = build_rag_chain(vector_store)
+        rag_chain, retriever, system_prompt_text = build_rag_chain(vector_store)
+
     
     if 'messages' not in st.session_state:
         st.session_state['messages'] = []
@@ -166,13 +181,49 @@ def main():
         
         with st.chat_message('assistant'):
             with st.spinner('Thinking...'):
-                result = rag_chain.invoke({
-                    'input': prompt,
-                    'chat_history': chat_history
-                })
+                result = rag_chain.invoke(
+                    {
+                        'input': prompt,
+                        'chat_history': chat_history
+                    }
+                )
                 response = result['answer']
                 st.markdown(response)
+        
+        # DEBUGGING: Show retrieved context and exact prompt sent to LLM
+        '''
+        with st.expander("🔍 Debug: What the AI retrieved"):
+            if "context" in result:
+                docs_with_scores = vector_store.similarity_search_with_score(prompt, k=10)
+                for doc, score in docs_with_scores:
+                    st.write(f"✅ **Similarity Score:** {round(score, 4)}")
+                    st.write(f"**Source:** {doc.metadata.get('source', 'Unknown')}")
+                    st.write(doc.page_content)
+                    st.divider()
+            else:
+                st.write("No context was retrieved for this query.")
+
+        with st.expander("📋 Debug: Exact Prompt Sent to LLM"):
+            retrieved_docs = retriever.invoke(prompt)
+            context_text = "\n\n---\n\n".join([doc.page_content for doc in retrieved_docs])
             
+            chat_history_text = ""
+            for msg in chat_history:
+                if isinstance(msg, HumanMessage):
+                    chat_history_text += f"Human: {msg.content}\n"
+                elif isinstance(msg, AIMessage):
+                    chat_history_text += f"AI: {msg.content}\n"
+            
+            full_prompt = f"""{system_prompt_text.replace('{context}', context_text)}
+        
+CHAT HISTORY:
+{chat_history_text if chat_history_text else "(none)"}
+
+HUMAN: {prompt}"""
+    
+            st.text_area("Prompt", value=full_prompt, height=400)
+        '''
+
         st.session_state.messages.append({'role': 'assistant', 'content': response})
 
 if __name__ == "__main__":
